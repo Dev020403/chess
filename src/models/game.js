@@ -40,9 +40,20 @@ const gameSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
-    moveHistory: { 
+    moveHistory: {
         type: [String],
         default: []
+    },
+    drawOffer: {
+        offeredBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            default: null
+        },
+        offeredAt: {
+            type: Date,
+            default: null
+        }
     }
 });
 

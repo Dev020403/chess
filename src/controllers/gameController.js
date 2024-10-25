@@ -44,42 +44,42 @@ const gameController = {
             // Step 1: Get gameId and playerId from req.params and req.body
             const { gameId } = req.params;
             const { playerId } = req.body;
-    
+
             // Step 2: Find the game
             const game = await Game.findOne({ gameId });
-    
+
             // Step 3: Validate game exists and is joinable
             if (!game) {
                 return res.status(404).json({ error: 'Game not found' });
             }
-    
+
             // Step 4: Check if game is pending
             if (game.status !== 'pending') {
                 return res.status(400).json({ error: 'Game is no longer available' });
             }
-    
+
             // Step 5: Check if player is already in the game
             if (game.whitePlayer && game.whitePlayer.toString() === playerId) {
                 return res.status(400).json({ error: 'Cannot join your own game' });
             }
-    
+
             // Step 6: Check if both players are assigned
             if (game.whitePlayer && game.blackPlayer) {
                 return res.status(400).json({ error: 'Game already has two players' });
             }
-    
+
             // Step 7: Assign player to white or black
             if (!game.whitePlayer) {
                 game.whitePlayer = playerId;  // Assign to white if no white player
             } else {
                 game.blackPlayer = playerId;  // Assign to black if white is already assigned
             }
-    
+
             // Step 8: Activate game and update last moved time
             game.status = 'active';
             game.lastMovedAt = new Date();
             await game.save();
-    
+
             // Step 9: Return game details with assigned roles
             return res.status(200).json({
                 message: 'Game joined successfully',
@@ -96,7 +96,7 @@ const gameController = {
             });
         }
     },
-    
+
     // Get game details
     getGame: async (req, res) => {
         try {
@@ -208,6 +208,120 @@ const gameController = {
             console.error('Resign game error:', error);
             return res.status(500).json({
                 error: 'Failed to resign game',
+                details: error.message
+            });
+        }
+    },
+    // offer draw
+    offerDraw: async (req, res) => {
+        try {
+            const { gameId } = req.params;
+            const { playerId } = req.body;
+
+            if (!playerId) {
+                return res.status(400).json({ error: 'Player ID is required' });
+            }
+
+            // Find the game
+            const game = await Game.findOne({ gameId });
+            if (!game) {
+                return res.status(404).json({ error: 'Game not found' });
+            }
+
+            // Verify game is active
+            if (game.status !== 'active') {
+                return res.status(400).json({ error: 'Game is not active' });
+            }
+
+            // Verify the player is part of the game
+            if (game.whitePlayer.toString() !== playerId && game.blackPlayer.toString() !== playerId) {
+                return res.status(403).json({ error: 'Player is not part of this game' });
+            }
+
+            // Check if there's already a pending draw offer
+            if (game.drawOffer.offeredBy) {
+                return res.status(400).json({ error: 'There is already a pending draw offer' });
+            }
+
+            // Record the draw offer
+            game.drawOffer = {
+                offeredBy: playerId,
+                offeredAt: new Date()
+            };
+
+            await game.save();
+
+            return res.status(200).json({
+                message: 'Draw offered successfully',
+                game
+            });
+        } catch (error) {
+            console.error('Offer draw error:', error);
+            return res.status(500).json({
+                error: 'Failed to offer draw',
+                details: error.message
+            });
+        }
+    },
+    // Accept or decline a draw offer
+    respondToDrawOffer: async (req, res) => {
+        try {
+            const { gameId } = req.params;
+            const { playerId, accept } = req.body;
+
+            if (!playerId) {
+                return res.status(400).json({ error: 'Player ID is required' });
+            }
+
+            // Find the game
+            const game = await Game.findOne({ gameId });
+            if (!game) {
+                return res.status(404).json({ error: 'Game not found' });
+            }
+
+            // Verify game is active
+            if (game.status !== 'active') {
+                return res.status(400).json({ error: 'Game is not active' });
+            }
+
+            // Check if there's a pending draw offer
+            if (!game.drawOffer) {
+                return res.status(400).json({ error: 'No pending draw offer' });
+            }
+
+            // Verify the responding player is the opponent of the player who offered
+            const isRespondingPlayerWhite = game.whitePlayer.toString() === playerId;
+            const isRespondingPlayerBlack = game.blackPlayer.toString() === playerId;
+            const isOfferingPlayer = game.drawOffer.offeredBy.toString() === playerId;
+
+            if (!isRespondingPlayerWhite && !isRespondingPlayerBlack) {
+                return res.status(403).json({ error: 'Player is not part of this game' });
+            }
+
+            if (isOfferingPlayer) {
+                return res.status(400).json({ error: 'Cannot respond to your own draw offer' });
+            }
+
+            if (accept) {
+                // Accept the draw
+                game.status = 'completed';
+                game.result = 'draw';
+                game.drawOffer = null;
+            } else {
+                // Decline the draw
+                game.drawOffer = null;
+            }
+
+            await game.save();
+
+            return res.status(200).json({
+                message: accept ? 'Draw accepted' : 'Draw declined',
+                game
+            });
+        } catch (error) {
+            console.error('Respond to draw offer error:', error);
+            return res.status(500).json({
+                error: 'Failed to respond to draw offer',
                 details: error.message
             });
         }
