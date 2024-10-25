@@ -106,7 +106,61 @@ const gameController = {
                 details: error.message
             });
         }
-    }
+    },
+    //make move
+    makeMove: async (req, res) => {
+        try {
+            const { gameId } = req.params;
+            const { from, to, promotion } = req.body;
 
+            // Step 1: Find the game
+            const game = await Game.findOne({ gameId });
+            if (!game) {
+                return res.status(404).json({ error: 'Game not found' });
+            }
+
+            // Step 2: Check if the game status is active
+            if (game.status !== 'active') {
+                return res.status(400).json({ error: 'Game is not active. Cannot make a move.' });
+            }
+
+            // Step 3: Initialize chess instance with current FEN
+            const chess = new Chess(game.fen);
+
+
+            // Step 4: Make the move with optional promotion
+            const move = chess.move({ from, to, promotion });
+            if (!move) {
+                return res.status(400).json({ error: 'Invalid move' });
+            }
+
+            // Step 5: Update the game's FEN and last moved time
+            game.fen = chess.fen();
+            game.lastMovedAt = new Date();
+
+
+            // Step 6: Check for endgame conditions
+            if (chess.isGameOver()) {
+                game.status = 'completed';
+                game.result = chess.inCheck() ? (chess.turn() === 'w' ? 'black' : 'white') : 'draw';
+            }
+
+            // Step 7: Save the updated game state
+            await game.save();
+
+            // Step 8: Return the updated game state
+            return res.status(200).json({
+                message: 'Move made successfully',
+                game,
+                boardState: chess.board() // Optionally, return the current board state
+            });
+        } catch (error) {
+            console.error('Make move error:', error);
+            return res.status(500).json({
+                error: 'Failed to make move',
+                details: error.message
+            });
+        }
+    }
 };
 module.exports = gameController;
