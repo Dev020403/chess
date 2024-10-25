@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const Game = require('../models/game');
 const { Chess } = require('chess.js');
+const { off } = require('process');
 
 const gameController = {
     // Create a new game
@@ -107,7 +108,7 @@ const gameController = {
             });
         }
     },
-    //make move
+    // makeMove function with added stalemate and threefold repetition checks
     makeMove: async (req, res) => {
         try {
             const { gameId } = req.params;
@@ -127,7 +128,6 @@ const gameController = {
             // Step 3: Initialize chess instance with current FEN
             const chess = new Chess(game.fen);
 
-
             // Step 4: Make the move with optional promotion
             const move = chess.move({ from, to, promotion });
             if (!move) {
@@ -138,11 +138,22 @@ const gameController = {
             game.fen = chess.fen();
             game.lastMovedAt = new Date();
 
-
             // Step 6: Check for endgame conditions
-            if (chess.isGameOver()) {
+            if (chess.isCheckmate()) {
                 game.status = 'completed';
-                game.result = chess.inCheck() ? (chess.turn() === 'w' ? 'black' : 'white') : 'draw';
+                game.result = chess.turn() === 'w' ? 'black' : 'white';  // Winner is the opposing color
+            } else if (chess.isStalemate()) {
+                game.status = 'completed';
+                game.result = 'draw';  // Game is a draw due to stalemate
+            } else if (chess.isThreefoldRepetition()) {
+                game.status = 'completed';
+                game.result = 'draw';  // Game is a draw due to threefold repetition
+            } else if (chess.isInsufficientMaterial()) {
+                game.status = 'completed';
+                game.result = 'draw';  // Game is a draw due to insufficient material
+            } else if (chess.isDraw()) {
+                game.status = 'completed';
+                game.result = 'draw';  // Game is a draw by other draw rules (50-move rule, etc.)
             }
 
             // Step 7: Save the updated game state
@@ -152,12 +163,51 @@ const gameController = {
             return res.status(200).json({
                 message: 'Move made successfully',
                 game,
-                boardState: chess.board() // Optionally, return the current board state
+                boardState: chess.board()
             });
         } catch (error) {
             console.error('Make move error:', error);
             return res.status(500).json({
                 error: 'Failed to make move',
+                details: error.message
+            });
+        }
+    },
+    // Resign from a game
+    resignGame: async (req, res) => {
+        try {
+            const { gameId } = req.params;
+            const { playerId } = req.body;
+            if (!playerId) {
+                return res.status(400).json({ error: 'Player ID is required' });
+            }
+            // Step 1: Find the game
+            const game = await Game.findOne({ gameId });
+            if (!game) {
+                return res.status(404).json({ error: 'Game not found' });
+            }
+
+            // Step 2: Check if the game status is active
+            if (game.status !== 'active') {
+                return res.status(400).json({ error: 'Game is not active. Cannot resign.' });
+            }
+
+            // Step 3: Determine the winner based on the resigning player
+            game.status = 'completed';
+            game.result = game.whitePlayer.toString() === playerId ? 'black' : 'white';  // Winner is the opposing color
+
+            // Step 4: Save the updated game state
+            await game.save();
+
+            // Step 5: Return the updated game state
+            return res.status(200).json({
+                message: 'Game resigned successfully',
+                game
+            });
+        } catch (error) {
+            console.error('Resign game error:', error);
+            return res.status(500).json({
+                error: 'Failed to resign game',
                 details: error.message
             });
         }
