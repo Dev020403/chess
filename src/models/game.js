@@ -1,6 +1,5 @@
 // models/game.js
 const mongoose = require('mongoose');
-const Chess = require('chess.js');
 
 const gameSchema = new mongoose.Schema({
     gameId: {
@@ -10,8 +9,7 @@ const gameSchema = new mongoose.Schema({
     },
     whitePlayer: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+        ref: 'User'
     },
     blackPlayer: {
         type: mongoose.Schema.Types.ObjectId,
@@ -41,6 +39,10 @@ const gameSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
+    },
+    moveHistory: { 
+        type: [String],
+        default: []
     }
 });
 

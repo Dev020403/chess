@@ -7,21 +7,23 @@ const gameController = {
     // Create a new game
     createGame: async (req, res) => {
         try {
-            //step 1 : get playerId from req.body
             const { playerId } = req.body;
 
-            //step 2 : Generate unique game ID and invite link
+            // Generate unique game ID and invite link
             const gameId = uuidv4();
             const inviteLink = `${process.env.CLIENT_URL}/game/join/${gameId}`;
 
-            //step 3 : Create new game instance
+            // Randomly assign player to white or black
+            const isWhite = Math.random() < 0.5;
             const newGame = await Game.create({
                 gameId,
-                whitePlayer: playerId,
+                whitePlayer: isWhite ? playerId : null,
+                blackPlayer: !isWhite ? playerId : null,
                 inviteLink,
                 status: 'pending'
             });
-            //step 4 : Return game details
+
+            // Return game details
             return res.status(201).json({
                 message: 'Game created successfully',
                 game: newGame,
@@ -39,38 +41,52 @@ const gameController = {
     // Join an existing game
     joinGame: async (req, res) => {
         try {
-            //step 1 : get gameId and playerId from req.params and req.body
+            // Step 1: Get gameId and playerId from req.params and req.body
             const { gameId } = req.params;
             const { playerId } = req.body;
-
-            //step 2 : Find the game
+    
+            // Step 2: Find the game
             const game = await Game.findOne({ gameId });
-
-            //step 3 : Validate game exists and is joinable
+    
+            // Step 3: Validate game exists and is joinable
             if (!game) {
                 return res.status(404).json({ error: 'Game not found' });
             }
-
-            // step 4 : Check if game is pending
+    
+            // Step 4: Check if game is pending
             if (game.status !== 'pending') {
                 return res.status(400).json({ error: 'Game is no longer available' });
             }
-
-            // step 5 : Check if player is already in the game
-            if (game.whitePlayer.toString() === playerId) {
+    
+            // Step 5: Check if player is already in the game
+            if (game.whitePlayer && game.whitePlayer.toString() === playerId) {
                 return res.status(400).json({ error: 'Cannot join your own game' });
             }
-
-            //step 6 : Update game with black player and activate it
-            game.blackPlayer = playerId;
+    
+            // Step 6: Check if both players are assigned
+            if (game.whitePlayer && game.blackPlayer) {
+                return res.status(400).json({ error: 'Game already has two players' });
+            }
+    
+            // Step 7: Assign player to white or black
+            if (!game.whitePlayer) {
+                game.whitePlayer = playerId;  // Assign to white if no white player
+            } else {
+                game.blackPlayer = playerId;  // Assign to black if white is already assigned
+            }
+    
+            // Step 8: Activate game and update last moved time
             game.status = 'active';
             game.lastMovedAt = new Date();
             await game.save();
-
-            //step 7 : Return game details
+    
+            // Step 9: Return game details with assigned roles
             return res.status(200).json({
                 message: 'Game joined successfully',
-                game
+                game: {
+                    ...game._doc,  // Spread operator to return game details
+                    assignedColor: !game.whitePlayer ? 'white' : 'black'  // Indicate assigned color
+                }
             });
         } catch (error) {
             console.error('Join game error:', error);
@@ -80,7 +96,7 @@ const gameController = {
             });
         }
     },
-
+    
     // Get game details
     getGame: async (req, res) => {
         try {
@@ -108,58 +124,41 @@ const gameController = {
             });
         }
     },
-    // makeMove function with added stalemate and threefold repetition checks
     makeMove: async (req, res) => {
         try {
             const { gameId } = req.params;
             const { from, to, promotion } = req.body;
 
-            // Step 1: Find the game
             const game = await Game.findOne({ gameId });
             if (!game) {
                 return res.status(404).json({ error: 'Game not found' });
             }
 
-            // Step 2: Check if the game status is active
             if (game.status !== 'active') {
                 return res.status(400).json({ error: 'Game is not active. Cannot make a move.' });
             }
 
-            // Step 3: Initialize chess instance with current FEN
             const chess = new Chess(game.fen);
-
-            // Step 4: Make the move with optional promotion
             const move = chess.move({ from, to, promotion });
+
             if (!move) {
                 return res.status(400).json({ error: 'Invalid move' });
             }
 
-            // Step 5: Update the game's FEN and last moved time
             game.fen = chess.fen();
             game.lastMovedAt = new Date();
+            game.moveHistory.push(move.san);
 
-            // Step 6: Check for endgame conditions
             if (chess.isCheckmate()) {
                 game.status = 'completed';
-                game.result = chess.turn() === 'w' ? 'black' : 'white';  // Winner is the opposing color
-            } else if (chess.isStalemate()) {
+                game.result = chess.turn() === 'w' ? 'black' : 'white';
+            } else if (chess.isStalemate() || chess.isDraw()) {
                 game.status = 'completed';
-                game.result = 'draw';  // Game is a draw due to stalemate
-            } else if (chess.isThreefoldRepetition()) {
-                game.status = 'completed';
-                game.result = 'draw';  // Game is a draw due to threefold repetition
-            } else if (chess.isInsufficientMaterial()) {
-                game.status = 'completed';
-                game.result = 'draw';  // Game is a draw due to insufficient material
-            } else if (chess.isDraw()) {
-                game.status = 'completed';
-                game.result = 'draw';  // Game is a draw by other draw rules (50-move rule, etc.)
+                game.result = 'draw';
             }
 
-            // Step 7: Save the updated game state
             await game.save();
 
-            // Step 8: Return the updated game state
             return res.status(200).json({
                 message: 'Move made successfully',
                 game,
@@ -173,6 +172,7 @@ const gameController = {
             });
         }
     },
+
     // Resign from a game
     resignGame: async (req, res) => {
         try {
