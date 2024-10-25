@@ -1,48 +1,47 @@
+// models/game.js
 const mongoose = require('mongoose');
+const Chess = require('chess.js');
 
 const gameSchema = new mongoose.Schema({
     gameId: {
-        type: Number,
+        type: String,
         required: true,
-        unique: true,
+        unique: true
     },
-    player1: {
+    whitePlayer: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
     },
-    player2: {
+    blackPlayer: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     },
-    moves: [{
-        from: String,
-        to: String,
-        san: String,
-        timestamp: { type: Date, default: Date.now }
-    }],
     status: {
         type: String,
-        enum: ['pending', 'active', 'completed'],
+        enum: ['pending', 'active', 'completed', 'abandoned'],
         default: 'pending'
     },
-    result: {
+    fen: {
         type: String,
-        enum: ['ongoing', 'draw', 'white_wins', 'black_wins'],
-        default: 'ongoing'
+        default: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
     },
     inviteLink: {
         type: String,
-        unique: true,
-        sparse: true
+        required: true
+    },
+    result: {
+        type: String,
+        enum: ['white', 'black', 'draw', null],
+        default: null
+    },
+    lastMovedAt: {
+        type: Date
     },
     createdAt: {
         type: Date,
         default: Date.now
-    },
-    lastMovedAt: {
-        type: Date,
-        default: Date.now
     }
 });
+
 module.exports = mongoose.model('Game', gameSchema);
