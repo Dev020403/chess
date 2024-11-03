@@ -18,7 +18,11 @@ const server = http.createServer(app);
 const socketIO = require('socket.io');
 const io = socketIO(server, {
     cors: {
-        origin: "http://localhost:3000", // Adjust to your frontend URL
+        origin: [
+            "http://localhost:3000",
+            "https://chess-frontend-seven-xi.vercel.app"
+        ],
+        // Adjust to your frontend URL
         methods: ["GET", "POST"]
     }
 });
